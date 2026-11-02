@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOTAM Visualizer · RKRR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root {
+  --bg:#080c12; --panel:#0c1219; --panel2:#0a1018; --border:#1a2a3a;
+  --accent:#00c8ff; --text:#b8cedd; --text-dim:#3a5a72;
+  --mono:'Share Tech Mono',monospace; --cond:'Barlow Condensed',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--cond);}
+.app{display:flex;flex-direction:column;height:100vh;}
+header{background:var(--panel);border-bottom:1px solid var(--border);padding:10px 18px;display:flex;align-items:center;gap:14px;flex-shrink:0;z-index:10;}
+.hex{width:30px;height:30px;flex-shrink:0;background:var(--accent);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);}
+header h1{font-size:17px;font-weight:900;letter-spacing:3px;color:var(--accent);text-transform:uppercase;}
+header small{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:1px;}
+.body{display:flex;flex:1;min-height:0;}
+.sidebar{width:370px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.sidebar-scroll{overflow-y:auto;flex:1;padding:14px;display:flex;flex-direction:column;gap:11px;}
+.sidebar-scroll::-webkit-scrollbar{width:4px;}
+.sidebar-scroll::-webkit-scrollbar-thumb{background:#1a3a55;border-radius:2px;}
+.lbl{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text-dim);border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:5px;text-transform:uppercase;}
+textarea{width:100%;height:190px;background:#050a10;border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:var(--mono);font-size:11px;line-height:1.65;padding:10px;resize:vertical;outline:none;transition:border-color .2s;}
+textarea:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(0,200,255,.06);}
+textarea::placeholder{color:#1a3050;}
+.btn-row{display:flex;gap:7px;}
+button{flex:1;padding:8px 6px;border-radius:3px;font-family:var(--cond);font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;transition:all .15s;border:1px solid;}
+.bp{background:var(--accent);border-color:var(--accent);color:#000;}
+.bp:hover{background:#33d6ff;box-shadow:0 0 16px rgba(0,200,255,.4);}
+.bs{background:transparent;border-color:var(--border);color:var(--text-dim);}
+.bs:hover{border-color:#5a8aaa;color:var(--text);}
+.bd{background:transparent;border-color:#2a1010;color:#804040;}
+.bd:hover{border-color:#c04040;color:#ff7070;}
+.status{font-family:var(--mono);font-size:10px;padding:6px 9px;border-radius:3px;border:1px solid var(--border);background:#050a10;color:var(--text-dim);display:flex;align-items:center;gap:6px;min-height:30px;}
+.status.ok{border-color:#1a4a2a;color:#40c060;}
+.status.err{border-color:#4a1a1a;color:#e05050;}
+.status.warn{border-color:#4a3a00;color:#ffcc00;}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
+.notam-card{border:1px solid var(--border);border-radius:4px;overflow:hidden;background:var(--panel2);cursor:pointer;transition:border-color .2s;}
+.notam-card:hover{border-color:#2a4a6a;}
+.notam-card.active{border-color:var(--cs,var(--accent));}
+.card-hd{padding:7px 10px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);}
+.card-sw{width:10px;height:10px;border-radius:2px;flex-shrink:0;background:var(--cs,var(--accent));}
+.card-id{font-family:var(--mono);font-size:10px;color:var(--accent);}
+.card-type{font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-left:auto;}
+.card-bd{padding:8px 10px;display:flex;flex-direction:column;gap:3px;}
+.cr{display:flex;gap:6px;font-size:11px;}
+.ck{color:var(--text-dim);font-family:var(--mono);font-size:10px;min-width:52px;}
+.cv{color:var(--text);font-family:var(--mono);font-size:10px;}
+.cw{color:#ffcc00;}
+.ccoords{margin-top:4px;display:flex;flex-direction:column;gap:2px;}
+.cpip{display:flex;gap:6px;align-items:center;padding:3px 6px;background:#060c14;border-radius:2px;font-family:var(--mono);font-size:9px;color:#5a8aaa;}
+.cpip b{color:#c8d040;min-width:22px;}
+.map-wrap{flex:1;position:relative;}
+#map{width:100%;height:100%;}
+.leaflet-container{background:#07101a;}
+.layer-toggle{position:absolute;top:10px;right:10px;z-index:500;display:flex;flex-direction:column;gap:4px;}
+.lbtn{background:rgba(8,12,18,.9);border:1px solid var(--border);border-radius:3px;color:var(--text-dim);font-family:var(--mono);font-size:10px;padding:5px 10px;cursor:pointer;letter-spacing:1px;transition:all .15s;flex:none;}
+.lbtn:hover,.lbtn.on{border-color:var(--accent);color:var(--accent);}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.blink{animation:pulse 1.4s infinite;}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="hex"></div>
+  <div>
+    <h1>NOTAM Area Visualizer</h1>
+    <small>MULTI-NOTAM PLOTTER v2.2, Made by Hyungjlee</small>
+  </div>
+</header>
+<div class="body">
+  <div class="sidebar">
+    <div class="sidebar-scroll">
+      <div>
+        <div class="lbl">NOTAM Raw Input</div>
+        <textarea id="ni" placeholder="하나 또는 여러 NOTAM을 붙여넣으세요.
+
+날짜 형식(예: 20MAY26 02:30)으로 각 NOTAM 자동 구분.
+
+• 좌표 2개+ → 코리더 (NM EITHER SIDE)
+• 좌표 1개 + RADIUS __NM → 원형 구역"></textarea>
+      </div>
+      <div class="btn-row">
+        <button class="bp" onclick="gen()">▶ 지도 생성</button>
+        <button class="bs" onclick="paste()">📋 붙여넣기</button>
+        <button class="bd" onclick="clr()">✕ 지우기</button>
+      </div>
+      <div id="st" class="status"><div class="dot blink"></div>NOTAM 텍스트를 입력하세요</div>
+      <div>
+        <div class="lbl">파싱된 NOTAM 목록</div>
+        <div id="cl" style="display:flex;flex-direction:column;gap:8px;">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:4px;">— 없음 —</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div class="layer-toggle">
+      <button class="lbtn on" id="bt-st" onclick="setTile('st')">STREET</button>
+      <button class="lbtn" id="bt-sa" onclick="setTile('sa')">SATELLITE</button>
+      <button class="lbtn" id="bt-dk" onclick="setTile('dk')">DARK</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+// ── PALETTE ──────────────────────────────────────────────────────────────────
+const PAL=[
+  {fill:'rgba(255,80,40,.18)',stroke:'#ff6030'},
+  {fill:'rgba(0,200,100,.18)',stroke:'#00c864'},
+  {fill:'rgba(80,140,255,.18)',stroke:'#508cff'},
+  {fill:'rgba(255,200,0,.18)',stroke:'#ffc800'},
+  {fill:'rgba(200,60,255,.18)',stroke:'#c83cff'},
+  {fill:'rgba(0,220,220,.18)',stroke:'#00dcdc'},
+  {fill:'rgba(255,140,0,.18)',stroke:'#ff8c00'},
+  {fill:'rgba(100,255,80,.18)',stroke:'#64ff50'},
+];
+
+// ── LEAFLET ───────────────────────────────────────────────────────────────────
+const TILES={
+  st:L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:14}),
+  sa:L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri',maxZoom:14}),
+  dk:L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© CartoDB',maxZoom:14}),
+};
+const map=L.map('map',{center:[36.5,127.8],zoom:7,layers:[TILES.st],zoomControl:true});
+let curTile='st';
+
+// ── Tile filter: brightness/contrast only — NO hue-rotate (would shift visual position)
+const fsEl=document.createElement('style');
+document.head.appendChild(fsEl);
+function applyFilter(t){
+  // hue-rotate is intentionally avoided — it does NOT shift tile coordinates,
+  // but combined with saturate it can make land/sea colours misleading.
+  // Use only brightness + contrast adjustments that are visually safe.
+  const f=t==='st'?'brightness(.70) contrast(1.05) saturate(.55)'
+          :t==='sa'?'brightness(.60) contrast(1.10) saturate(.75)'
+          :'none';
+  fsEl.textContent=`.leaflet-tile{filter:${f};}`;
+}
+applyFilter('st');
+
+function setTile(t){
+  map.removeLayer(TILES[curTile]);
+  map.addLayer(TILES[t]);
+  curTile=t;
+  applyFilter(t);
+  document.querySelectorAll('.lbtn').forEach(b=>b.classList.remove('on'));
+  document.getElementById('bt-'+t).classList.add('on');
+}
+
+// Tooltip style injection
+const ttSt=document.createElement('style');
+ttSt.textContent=`
+.dtt{background:rgba(6,10,18,.94)!important;border:1px solid #1a3a55!important;border-radius:3px!important;color:#b8cedd!important;box-shadow:0 2px 12px rgba(0,0,0,.7)!important;padding:7px 11px!important;font-family:'Share Tech Mono',monospace;font-size:11px;line-height:1.7;}
+.dtt::before{display:none!important;}
+.leaflet-control-zoom a{background:#0c1219!important;color:#00c8ff!important;border-color:#1a2a3a!important;}
+.leaflet-control-zoom a:hover{background:#0f1a28!important;}
+.leaflet-control-attribution{background:rgba(6,10,16,.65)!important;color:#1a3050!important;font-size:9px!important;}
+.leaflet-control-attribution a{color:#1a4060!important;}
+`;
+document.head.appendChild(ttSt);
+
+// ── PARSER ────────────────────────────────────────────────────────────────────
+const COORD_TOKEN = '(?:\\d{4,6}[NS]\\d{5,7}[EW]|[NS]\\d{4,6}[EW]\\d{5,7})';
+function splitNotams(text){
+  const lines=text.split('\n');
+  const blocks=[];
+  let cur=[];
+  for(const line of lines){
+    const dates=[...line.matchAll(/\b\d{1,2}[A-Z]{3}\d{2,4}\s+\d{2}[:.]?\d{2}\b/gi)];
+    const hasDash=/[-–]/.test(line);
+    if(dates.length>=2&&hasDash&&cur.length){
+      blocks.push(cur.join('\n'));
+      cur=[line];
+    } else {
+      cur.push(line);
+    }
+  }
+  if(cur.length) blocks.push(cur.join('\n'));
+  return blocks.filter(b=>b.trim());
+}
+
+function parseDMS(str){
+  str = str.trim();
+  // Try format 1: DDMMSS[N/S]DDDMMSS[E/W]
+  let m = str.match(/^(\d{4,6})([NS])(\d{5,7})([EW])$/i);
+  let lat, lon, latRaw, latHem, lonRaw, lonHem;
+  if (m) {
+    latRaw = m[1]; latHem = m[2].toUpperCase();
+    lonRaw = m[3]; lonHem = m[4].toUpperCase();
+  } else {
+    // Try format 2: [NS]DDMMSS[EW]DDDMMSS
+    m = str.match(/^([NS])(\d{4,6})([EW])(\d{5,7})$/i);
+    if (m) {
+      latRaw = m[2]; latHem = m[1].toUpperCase();
+      lonRaw = m[4]; lonHem = m[3].toUpperCase();
+    } else {
+      return null;
+    }
+  }
+  function toDD(raw, h) {
+    const sec = parseInt(raw.slice(-2));
+    const min = parseInt(raw.slice(-4, -2));
+    const deg = parseInt(raw.slice(0, -4));
+    const dd = deg + min / 60 + sec / 3600;
+    return (h === 'S' || h === 'W') ? -dd : dd;
+  }
+  lat = toDD(latRaw, latHem);
+  lon = toDD(lonRaw, lonHem);
+  if (isNaN(lat) || isNaN(lon)) return null;
+  function fmt(v, pos, neg, degW) {
+    const sign = v >= 0 ? pos : neg;
+    const a = Math.abs(v);
+    const d = Math.floor(a), mn = Math.floor((a - d) * 60), sc = Math.round(((a - d) * 60 - mn) * 60);
+    return `${String(d).padStart(degW, '0')}°${String(mn).padStart(2, '0')}'${String(sc).padStart(2, '0')}"${sign}`;
+  }
+  const dms = fmt(lat, latHem, latHem === 'N' ? 'S' : 'N', 2) + ' ' +
+              fmt(lon, lonHem, lonHem === 'E' ? 'W' : 'E', 3);
+  return { lat, lon, raw: str, dms };
+}
+
+function parseNotam(text){
+  // Normalize only coordinate tokens.
+  // This preserves ordinary text such as:
+  //   RADIUS 30 NM
+  //   5 NM EITHER SIDE
+  // while allowing coordinates containing arbitrary spaces.
+  text = text.replace(
+    /(?:[NS]\s*\d(?:[\d.\s]{3,20})[EW]\s*\d(?:[\d.\s]{4,20})|\d(?:[\d.\s]{3,20})[NS]\s*\d(?:[\d.\s]{4,20})[EW])/gi,
+    token => token.replace(/\s+/g, '')
+  );
+  const n={raw:text,coords:[],flBot:null,flTop:null,eff:null,id:null,type:'UNKNOWN',radNm:null,buf:null,desc:''};
+
+  // ID
+  const idm=text.match(/RK[A-Z]{2}\s+[A-Z]\d+\/\d+/i);
+  if(idm)n.id=idm[0];
+
+  // Validity
+  const vm=text.match(/(\d{1,2}[A-Z]{3}\d{2,4}\s+\d{2}[:.]?\d{2})\s*[-–]\s*(\d{1,2}[A-Z]{3}\d{2,4}\s+\d{2}[:.]?\d{2})/i);
+  if(vm)n.eff=vm[1].trim()+' – '+vm[2].trim();
+
+  // FL / altitude
+  const matchFL=(re)=>{const m=text.match(re);return m?'FL'+m[1]:null;};
+  n.flBot=text.match(/F\)\s*SFC/i)?'SFC':matchFL(/F\)\s*FL(\d+)/i)||matchFL(/F\)(\d{3,4})\b/);
+  n.flTop=matchFL(/G\)\s*FL(\d+)/i)||matchFL(/G\)(\d{3,4})\b/)||(text.match(/G\)\s*UNL/i)?'UNL':null);
+
+  // Buffer (corridor)
+  const bm=text.match(/(\d+(?:\.\d+)?)\s*NM\s+EITHER\s+SIDE/i);
+  if(bm)n.buf=parseFloat(bm[1]);
+
+  // Radius (circle)
+  const rm=text.match(/RADIUS\s+(\d+(?:\.\d+)?)\s*NM/i);
+  if(rm)n.radNm=parseFloat(rm[1]);
+
+  // ── Collect ALL coords from entire text, ignoring newlines ──
+  // Join all lines, find every DMS token (both formats)
+  const flat = text.replace(/[\r\n]+/g, ' ');
+  const coordRe = new RegExp(COORD_TOKEN,'gi');
+  const seen = new Set(); let cm;
+  while ((cm = coordRe.exec(flat)) !== null) {
+    const tok = cm[0];
+    if (!seen.has(tok)) {
+      seen.add(tok);
+      const d = parseDMS(tok);
+      if (d) n.coords.push({ ...d, idx: n.coords.length + 1 });
+    }
+  }
+
+  // Description
+  const em=text.match(/E\)\s*([\s\S]+?)(?=\nF\)|\nG\)|\nD\)|$)/i);
+  if(em)n.desc=em[1].replace(/\s+/g,' ').trim().slice(0,150);
+
+  // ── Determine type ──
+  // Priority: CIRCLE > CORRIDOR (has "NM EITHER SIDE") > POLYGON (3+ coords) > UNKNOWN
+  if(n.coords.length===1&&n.radNm){
+    n.type='CIRCLE';
+  } else if(n.buf&&n.coords.length>=2){
+    n.type='CORRIDOR';
+  } else if(n.coords.length>=3){
+    n.type='POLYGON';   // direct filled polygon
+  } else if(n.coords.length===2){
+    n.type='CORRIDOR';  // 2-point corridor with default buffer
+  } else {
+    n.type='UNKNOWN';
+  }
+
+  return n;
+}
+
+// ── GEOMETRY ──────────────────────────────────────────────────────────────────
+function circlePts(lat,lon,nm,steps=90){
+  const R=6371000,r=nm*1852;
+  const pts=[];
+  for(let i=0;i<=steps;i++){
+    const a=(i/steps)*2*Math.PI;
+    const dLat=(r*Math.cos(a))/R*(180/Math.PI);
+    const dLon=(r*Math.sin(a))/(R*Math.cos(lat*Math.PI/180))*(180/Math.PI);
+    pts.push([lat+dLat,lon+dLon]);
+  }
+  return pts;
+}
+
+function corridorPts(coords,nm){
+  const buf=nm/60;
+  function perp(ax,ay,bx,by){
+    const dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy);
+    if(len===0)return[0,0];
+    return[-dy/len*buf,dx/len*buf];
+  }
+  const L=[],R=[];
+  for(let i=0;i<coords.length;i++){
+    let nx=0,ny=0,cnt=0;
+    if(i>0){const[a,b]=perp(coords[i-1].lon,coords[i-1].lat,coords[i].lon,coords[i].lat);nx+=a;ny+=b;cnt++;}
+    if(i<coords.length-1){const[a,b]=perp(coords[i].lon,coords[i].lat,coords[i+1].lon,coords[i+1].lat);nx+=a;ny+=b;cnt++;}
+    if(cnt){nx/=cnt;ny/=cnt;}
+    const len=Math.hypot(nx,ny)||1;
+    nx=nx/len*buf; ny=ny/len*buf;
+    L.push([coords[i].lat+ny,coords[i].lon+nx]);
+    R.push([coords[i].lat-ny,coords[i].lon-nx]);
+  }
+  return[...L,...[...R].reverse(),L[0]];
+}
+
+// ── Convex Hull (Graham scan) to fix self-intersecting polygon vertex order ──
+// Works on array of {lat, lon} objects; returns reordered array.
+function convexHull(pts){
+  if(pts.length<=3)return pts;
+  // Use lon as X, lat as Y
+  const ps=pts.slice().sort((a,b)=>a.lon!==b.lon?a.lon-b.lon:a.lat-b.lat);
+  function cross(O,A,B){return(A.lon-O.lon)*(B.lat-O.lat)-(A.lat-O.lat)*(B.lon-O.lon);}
+  const lower=[];
+  for(const p of ps){
+    while(lower.length>=2&&cross(lower[lower.length-2],lower[lower.length-1],p)<=0)lower.pop();
+    lower.push(p);
+  }
+  const upper=[];
+  for(let i=ps.length-1;i>=0;i--){
+    const p=ps[i];
+    while(upper.length>=2&&cross(upper[upper.length-2],upper[upper.length-1],p)<=0)upper.pop();
+    upper.push(p);
+  }
+  upper.pop(); lower.pop();
+  return lower.concat(upper);
+}
+
+// Signed area (shoelace) — positive = CCW
+function signedArea(pts){
+  let a=0;
+  for(let i=0;i<pts.length;i++){
+    const j=(i+1)%pts.length;
+    a+=(pts[i].lon*pts[j].lat)-(pts[j].lon*pts[i].lat);
+  }
+  return a/2;
+}
+
+// Check if polygon self-intersects (simplified: test all edge pairs)
+function selfIntersects(pts){
+  const n=pts.length;
+  function seg(p1,p2,p3,p4){
+    function ccw(A,B,C){return(C.lat-A.lat)*(B.lon-A.lon)>(B.lat-A.lat)*(C.lon-A.lon);}
+    return ccw(p1,p3,p4)!==ccw(p2,p3,p4)&&ccw(p1,p2,p3)!==ccw(p1,p2,p4);
+  }
+  for(let i=0;i<n;i++){
+    for(let j=i+2;j<n;j++){
+      if(i===0&&j===n-1)continue;
+      if(seg(pts[i],pts[(i+1)%n],pts[j],pts[(j+1)%n]))return true;
+    }
+  }
+  return false;
+}
+
+// Smart polygon ordering:
+// 1. If input order doesn't self-intersect → use as-is (respects original NOTAM intent)
+// 2. If it does self-intersect → apply convex hull
+function orderPolygon(coords){
+  // Self-intersection check
+  if(!selfIntersects(coords)){
+    // Ensure CCW (Leaflet standard); if CW, reverse
+    if(signedArea(coords)<0)return coords.slice().reverse();
+    return coords;
+  }
+  // Fall back to convex hull
+  const hull=convexHull(coords);
+  if(signedArea(hull)<0)hull.reverse();
+  return hull;
+}
+
+// ── MAP LAYERS ────────────────────────────────────────────────────────────────
+let layers=[];
+function clearLayers(){layers.forEach(l=>map.removeLayer(l));layers=[];}
+function addL(l){l.addTo(map);layers.push(l);}
+
+function makeTooltip(n,i,col){
+  const{stroke}=col;
+  const altStr=[n.flBot,n.flTop].filter(Boolean).join(' – ');
+  const typeStr=n.type==='CIRCLE'?`RADIUS ${n.radNm} NM`:n.type==='CORRIDOR'?`${n.buf||5} NM EITHER SIDE`:'POLYGON';
+  return`<b style="color:${stroke}">${n.id||'NOTAM #'+(i+1)}</b><br>
+${n.eff?n.eff+'<br>':''}${altStr?`<span style="color:#ffcc00;">${altStr}</span><br>`:''}${typeStr}`;
+}
+
+function makePopup(n){
+  return `
+  <div style="
+    width:900px;
+    max-width:90vw;
+    max-height:420px;
+    overflow:auto;
+    white-space:pre-wrap;
+    font-family:'Share Tech Mono',monospace;
+    font-size:11px;
+    line-height:1.5;
+    color:#000000;
+    background:#ffffff;
+    padding:14px;
+    border-radius:6px;
+  ">
+${n.raw
+  .replace(new RegExp('(' + COORD_TOKEN + ')\\s*\\n\\s*(?=' + COORD_TOKEN + ')','g'),'$1-')
+  .replace(/</g,'&lt;')
+  .replace(/>/g,'&gt;')}
+  </div>`;
+}
+
+function addWpMarkers(coords,stroke){
+  coords.forEach((c,j)=>{
+    const icon=L.divIcon({className:'',iconAnchor:[8,8],
+      html:`<div style="width:16px;height:16px;border-radius:50%;background:${stroke};border:2px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-family:'Share Tech Mono',monospace;font-size:8px;color:#000;font-weight:bold;">${j+1}</div>`});
+    const mk=L.marker([c.lat,c.lon],{icon});
+    mk.bindTooltip(
+      `<b style="color:${stroke}">WP${j+1}</b> ${c.raw}<br>`+
+      `${c.dms||''}<br>`+
+      `<span style="color:#607080;">${c.lat.toFixed(5)}°N &nbsp;${c.lon.toFixed(5)}°E</span>`,
+      {className:'dtt'});
+    addL(mk);
+  });
+}
+
+function drawNotam(n,col,i){
+  const{stroke,fill}=col;
+  const tt=makeTooltip(n,i,col);
+
+  // ── CIRCLE ──
+  if(n.type==='CIRCLE'){
+    const c=n.coords[0];
+    const pts=circlePts(c.lat,c.lon,n.radNm);
+    const poly=L.polygon(pts,{color:stroke,weight:2,dashArray:'6 4',fillColor:stroke,fillOpacity:.22});
+    poly.bindTooltip(tt,{sticky:true,className:'dtt'});
+    poly.bindPopup(makePopup(n));
+    addL(poly);
+    const cm=L.circleMarker([c.lat,c.lon],{radius:5,color:stroke,fillColor:stroke,fillOpacity:.95,weight:2});
+    cm.bindTooltip(
+      `<b style="color:${stroke}">CENTER</b> ${c.raw}<br>${c.dms||''}<br>`+
+      `<span style="color:#607080;">${c.lat.toFixed(5)}°N &nbsp;${c.lon.toFixed(5)}°E</span>`,
+      {className:'dtt'});
+    cm.bindPopup(makePopup(n));
+    addL(cm);
+    const li=L.divIcon({className:'',iconAnchor:[0,0],
+      html:`<span style="font-family:'Share Tech Mono',monospace;font-size:10px;color:${stroke};letter-spacing:1px;white-space:nowrap;">${n.id||'N'+(i+1)} R${n.radNm}NM</span>`});
+    addL(L.marker([c.lat+n.radNm/60*1.08,c.lon],{icon:li,interactive:false}));
+
+  // ── CORRIDOR ──
+  } else if(n.type==='CORRIDOR'){
+    const bufNm=n.buf||5;
+    const poly=L.polygon(corridorPts(n.coords,bufNm),{color:stroke,weight:1.5,dashArray:'7 5',fillColor:stroke,fillOpacity:.20});
+    poly.bindTooltip(tt,{sticky:true,className:'dtt'});
+    poly.bindPopup(makePopup(n));
+    addL(poly);
+    const ln=L.polyline(n.coords.map(c=>[c.lat,c.lon]),{color:stroke,weight:2.5,opacity:.9});
+    ln.bindPopup(makePopup(n));
+    addL(ln);
+    // direction arrows
+    for(let j=0;j<n.coords.length-1;j++){
+      const a=n.coords[j],b=n.coords[j+1];
+      const bearing=Math.atan2(b.lon-a.lon,b.lat-a.lat)*180/Math.PI;
+      const ai=L.divIcon({className:'',iconAnchor:[8,8],
+        html:`<div style="width:16px;height:16px;display:flex;align-items:center;justify-content:center;transform:rotate(${bearing}deg);color:${stroke};font-size:14px;line-height:1;">▲</div>`});
+      addL(L.marker([(a.lat+b.lat)/2,(a.lon+b.lon)/2],{icon:ai,interactive:false}));
+    }
+    addWpMarkers(n.coords,stroke);
+
+  // ── POLYGON (직접 채우기) ──
+  } else if(n.type==='POLYGON'){
+    const ordered=orderPolygon(n.coords);
+    const latlngs=ordered.map(c=>[c.lat,c.lon]);
+    const poly=L.polygon(latlngs,{
+      color:stroke, weight:2.5, opacity:.95,
+      fillColor:stroke, fillOpacity:.25,
+      dashArray:null
+    });
+    poly.bindTooltip(tt,{sticky:true,className:'dtt'});
+    poly.bindPopup(makePopup(n));
+    addL(poly);
+    addWpMarkers(ordered,stroke);
+  }
+}
+
+// ── CARDS ─────────────────────────────────────────────────────────────────────
+let pNotams=[];
+
+function renderCards(notams){
+  const el=document.getElementById('cl');
+  if(!notams.length){el.innerHTML='<div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:4px;">— 없음 —</div>';return;}
+  el.innerHTML=notams.map((n,i)=>{
+    const col=PAL[i%PAL.length];
+    const typeTag=n.type==='CIRCLE'?'◉ CIRCLE':n.type==='CORRIDOR'?'⊟ CORRIDOR':n.type==='POLYGON'?'⬡ POLYGON':'? NO GEO';
+    const hasGeo=n.type!=='UNKNOWN'&&n.coords.length>0;
+    const coordsHtml=n.coords.slice(0,5).map(c=>`<div class="cpip"><b>WP${c.idx}</b>${c.raw}<span style="margin-left:auto;color:#2a5a72;">${c.dms||c.lat.toFixed(3)+'°N '+c.lon.toFixed(3)+'°E'}</span></div>`).join('');
+    const more=n.coords.length>5?`<div class="cpip" style="color:#2a4a62;">+${n.coords.length-5} more…</div>`:'';
+    return`<div class="notam-card" id="card-${i}" style="--cs:${col.stroke};${!hasGeo?'opacity:.5;pointer-events:none;':''}" onclick="focusN(${i})">
+      <div class="card-hd">
+        <div class="card-sw"></div>
+        <span class="card-id">${n.id||'NOTAM #'+(i+1)}</span>
+        <span class="card-type">${typeTag}</span>
+      </div>
+      <div class="card-bd">
+        ${n.eff?`<div class="cr"><span class="ck">유효기간</span><span class="cv" style="font-size:9px;">${n.eff}</span></div>`:''}
+        ${n.flBot||n.flTop?`<div class="cr"><span class="ck">고도</span><span class="cv cw">${[n.flBot,n.flTop].filter(Boolean).join(' – ')}</span></div>`:''}
+        ${n.type==='CIRCLE'&&n.radNm?`<div class="cr"><span class="ck">반경</span><span class="cv">${n.radNm} NM</span></div>`:''}
+        ${n.type==='CORRIDOR'&&n.buf?`<div class="cr"><span class="ck">완충</span><span class="cv">${n.buf} NM EITHER SIDE</span></div>`:''}
+        ${n.desc?`<div class="cr"><span class="ck">내용</span><span class="cv" style="font-size:9px;color:#7a9aaa;">${n.desc.slice(0,100)}${n.desc.length>100?'…':''}</span></div>`:''}
+        ${n.coords.length?`<div class="ccoords">${coordsHtml}${more}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function focusN(i){
+  const n=pNotams[i];
+  if(!n||!n.coords.length)return;
+  const lats=n.coords.map(c=>c.lat),lons=n.coords.map(c=>c.lon);
+  const pad=n.type==='CIRCLE'?(n.radNm||10)/60+0.3:0.5;
+  map.fitBounds([[Math.min(...lats)-pad,Math.min(...lons)-pad],[Math.max(...lats)+pad,Math.max(...lons)+pad]]);
+  document.querySelectorAll('.notam-card').forEach((el,j)=>el.classList.toggle('active',j===i));
+}
+
+function setSt(type,msg){const el=document.getElementById('st');el.className='status '+(type||'');el.innerHTML=`<div class="dot ${type?'':'blink'}"></div>${msg}`;}
+
+// ── MAIN ──────────────────────────────────────────────────────────────────────
+function gen(){
+  const raw=document.getElementById('ni').value.trim();
+  if(!raw){setSt('err','NOTAM 텍스트를 입력하세요');return;}
+  const blocks=splitNotams(raw);
+  const notams=blocks.map(b=>parseNotam(b));
+  pNotams=notams;
+  const geo=notams.filter(n=>n.type!=='UNKNOWN'&&n.coords.length);
+  clearLayers();
+  if(!geo.length){setSt('err',`${notams.length}개 NOTAM 파싱 — 지도에 표시할 좌표 없음`);renderCards(notams);return;}
+  notams.forEach((n,i)=>{if(n.type==='UNKNOWN'||!n.coords.length)return;drawNotam(n,PAL[i%PAL.length],i);});
+  const allC=geo.flatMap(n=>n.coords);
+  const lats=allC.map(c=>c.lat),lons=allC.map(c=>c.lon);
+  const rp=Math.max(...geo.filter(n=>n.type==='CIRCLE').map(n=>n.radNm||0),0)/60+0.4;
+  map.fitBounds([[Math.min(...lats)-rp,Math.min(...lons)-rp],[Math.max(...lats)+rp,Math.max(...lons)+rp]]);
+  renderCards(notams);
+  const ng=notams.length-geo.length;
+  setSt('ok',`${notams.length}개 NOTAM 파싱 — ${geo.length}개 지도 표시${ng?` (${ng}개 좌표 없음)`:''}`);
+}
+
+function clr(){
+  document.getElementById('ni').value='';
+  clearLayers();pNotams=[];
+  document.getElementById('cl').innerHTML='<div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);padding:4px;">— 없음 —</div>';
+  setSt('','NOTAM 텍스트를 입력하세요');
+}
+
+async function paste(){
+  try{const t=await navigator.clipboard.readText();document.getElementById('ni').value=t;setSt('warn','클립보드 내용 붙여넣기 완료');}
+  catch{setSt('err','클립보드 접근 실패 — Ctrl+V를 사용하세요');}
+}
+
+// Pre-fill
+document.getElementById('ni').value=
+`15MAY26 12:45 - 26MAY26 17:45\tRKRR D1052/26
+D) 15 21 26 1245-1745
+E) MULTIPLE U.S. MIL ACT WILL BE CONDUCTED WI INCHEON FIR AS FLW
+5NM EITHER SIDE OF CENTER LINE
+314314N1253948E-324700N1243300E-335000N1241000E-353200N1241000E
+ATC WILL NOT CLEAR NON-PARTICIPATING FLT THRU THIS AREA
+RMK : INCLUDING ALL ATS RTE IN THIS AREA
+F)FL200 G)FL220
+
+20MAY26 02:30 - 22MAY26 04:30\tRKRR D1053/26
+D) 20 21 22 0230-0430
+E) ROCKET LAUNCH. AREA PROHIBITED.
+RADIUS 30NM CENTER POINT
+364500N1270000E
+ATC WILL NOT CLEAR NON-PARTICIPATING FLT THRU THIS AREA
+F)SFC G)UNL
+
+23MAY26 08:00 - 23MAY26 16:00\tRKRR D1054/26
+E) MILITARY EXERCISE POLYGON AREA WI INCHEON FIR
+360000N1250000E-360000N1260000E
+375000N1265000E-380000N1255000E
+375000N1245000E
+F)FL050 G)FL150`;
+</script>
+</body>
+</html>
